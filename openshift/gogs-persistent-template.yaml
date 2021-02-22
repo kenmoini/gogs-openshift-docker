@@ -284,7 +284,7 @@ objects:
       HOST     = ${APPLICATION_NAME}-postgresql:5432
       NAME     = ${DATABASE_NAME}
       USER     = ${DATABASE_USER}
-      PASSWD   = ${DATABASE_PASSWORD}
+      PASSWORD   = ${DATABASE_PASSWORD}
 
       [repository]
       ROOT = /opt/gogs/data/repositories
@@ -296,9 +296,6 @@ objects:
       [security]
       INSTALL_LOCK = ${INSTALL_LOCK}
 
-      [service]
-      ENABLE_CAPTCHA = false
-
       [webhook]
       SKIP_TLS_VERIFY = ${SKIP_TLS_VERIFY}
       
@@ -306,7 +303,7 @@ objects:
       ACTIVATE_CODE_LIVES = 10
       RESET_PASSWORD_CODE_LIVES = 10
       REQUIRE_EMAIL_CONFIRMATION = false
-      ENABLE_CAPTCHA = false
+      ENABLE_REGISTRATION_CAPTCHA = false
 parameters:
 - description: The name for the application.
   name: APPLICATION_NAME
