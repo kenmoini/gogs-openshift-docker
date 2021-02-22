@@ -301,6 +301,12 @@ objects:
 
       [webhook]
       SKIP_TLS_VERIFY = ${SKIP_TLS_VERIFY}
+      
+      [auth]
+      ACTIVATE_CODE_LIVES = 10
+      RESET_PASSWORD_CODE_LIVES = 10
+      REQUIRE_EMAIL_CONFIRMATION = false
+      ENABLE_CAPTCHA = false
 parameters:
 - description: The name for the application.
   name: APPLICATION_NAME
