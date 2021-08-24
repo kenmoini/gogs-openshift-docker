@@ -343,7 +343,7 @@ parameters:
   value: 12MB
 - displayName: Database version (PostgreSQL)
   name: DATABASE_VERSION
-  value: "10"
+  value: "12"
 - name: GOGS_VERSION
   displayName: Gogs Version
   description: 'Version of the Gogs container image to be used (check the available version https://quay.io/repository/takinosh/gogs?tab=tags)'
