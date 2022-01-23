@@ -20,7 +20,7 @@ jobs:
     - name: Get the latest version of Gogs
       id: gogs_version
       run: |
-        echo ::set-output name=GOGS_VERSION::$(curl -sSL https://api.github.com/repos/gogs/gogs/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        echo ::set-output name=GOGS_VERSION::$(curl -sSL https://api.github.com/repos/gogs/gogs/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/v//g')
 
     - name: Bump version and push tag
       id: tag_version
