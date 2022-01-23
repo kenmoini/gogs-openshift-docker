@@ -2,6 +2,7 @@ FROM centos:7
 
 LABEL org.opencontainers.image.authors="ken@kenmoini.com"
 
+# This isn't really even the tagged version that is pulled from the repo beacuse they have a pipeline issue...
 ARG GOGS_VERSION="v0.12.4"
 
 LABEL name="Gogs - Go Git Service" \
