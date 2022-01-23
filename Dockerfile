@@ -1,8 +1,8 @@
 FROM centos:7
 
-MAINTAINER Erik Jacobs <erikmjacobs@gmail.com>
+LABEL org.opencontainers.image.authors="ken@kenmoini.com"
 
-ARG GOGS_VERSION="0.11.91"
+ARG GOGS_VERSION="v0.12.4"
 
 LABEL name="Gogs - Go Git Service" \
       vendor="Gogs" \
@@ -11,7 +11,7 @@ LABEL name="Gogs - Go Git Service" \
       summary="The goal of this project is to make the easiest, fastest, and most painless way of setting up a self-hosted Git service." \
       io.openshift.expose-services="3000,gogs" \
       io.openshift.tags="gogs" \
-      build-date="2020-07-01" \
+      build-date="2022-01-23" \
       version="${GOGS_VERSION}" \
       release="1"
 
@@ -23,6 +23,8 @@ RUN curl -L -o /etc/yum.repos.d/gogs.repo  https://dl.packager.io/srv/gogs/gogs/
     yum -y install epel-release && \
     yum -y --setopt=tsflags=nodocs install gogs nss_wrapper gettext && \
     yum -y clean all && \
+    rm -rf /var/cache/yum && \
+    rm -rf /var/log/* && \
     mkdir -p /var/lib/gogs
 
 RUN /usr/bin/fix-permissions /var/lib/gogs && \

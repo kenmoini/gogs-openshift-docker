@@ -1,0 +1,75 @@
+name: Build and Push
+on:
+  push:
+    paths-ignore:
+      - 'README.md'
+    tags:
+      - v*
+jobs:
+  # Build the container
+  build-container:
+    name: Build Container
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+
+    - name: Check out code
+      uses: actions/checkout@v2.4.0
+
+    - name: Git Build Info
+      id: git_build_info
+      run: |
+        echo ::set-output name=SOURCE_NAME::${GITHUB_REF#refs/*/}
+        echo ::set-output name=SOURCE_BRANCH::${GITHUB_REF#refs/heads/}
+        echo ::set-output name=SOURCE_TAG::${GITHUB_REF#refs/tags/}
+
+    - name: Get the latest version of Gogs
+      id: gogs_version
+      run: |
+        echo "SOURCE_NAME: ${{ steps.git_build_info.outputs.SOURCE_NAME }}"
+        echo "SOURCE_BRANCH: ${{ steps.git_build_info.outputs.SOURCE_BRANCH }}"
+        echo "SOURCE_TAG: ${{ steps.git_build_info.outputs.SOURCE_TAG }}"
+        echo ::set-output name=GOGS_VERSION::$(curl -sSL https://golang.org/VERSION?m=text | sed 's/go//g')
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v1
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Docker meta
+      id: meta
+      uses: docker/metadata-action@v3
+      with:
+        # list of Docker images to use as base name for tags
+        images: "${{ secrets.REGISTRY_REPO }}"
+        # generate Docker tags based on the following events/attributes
+        tags: |
+          type=ref,event=branch
+          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha
+
+    - name: Login to Quay
+      uses: docker/login-action@v1 
+      with:
+        registry: quay.io
+        username: "${{ secrets.REGISTRY_USER }}"
+        password: "${{ secrets.REGISTRY_PASS }}"
+
+    - name: Build and push
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: true
+        file: Dockerfile
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          GOGS_VERSION=${{ steps.gogs_version.outputs.GOGS_VERSION }}
+
+    - name: Create a new Release with the newly built container
+      uses: ncipollo/release-action@v1
+      with:
+        token: ${{ secrets.GHUB_TOKEN }}
