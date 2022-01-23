@@ -4,7 +4,7 @@ on:
     paths-ignore:
       - 'README.md'
     branches:
-      - main
+      - master
   ## Runs every day at midnight
   schedule:
     - cron: '0 0 * * *'
