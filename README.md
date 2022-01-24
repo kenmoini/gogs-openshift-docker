@@ -1,8 +1,9 @@
 # Gogs for OpenShift
 
 ![Source Code](https://img.shields.io/badge/Source-GitHub-brightgreen?style=for-the-badge)
-[![Container Image on Quay](https://img.shields.io/badge/Container%20Image-Quay.io-orange?style=for-the-badge)](https://quay.io/kenmoini/gogs-centos7)
-![GitHub Workflow Status](https://img.shields.io/github/workflow/status/kenmoini/gogs-openshift-docker/Build%20and%20Push?label=Container%20Build&style=for-the-badge)
+[![CentOS 7 Container Image on Quay](https://img.shields.io/badge/CentOS7%20Container%20Image-Quay.io-orange?style=for-the-badge)](https://quay.io/kenmoini/gogs-centos7)
+[![UBI8 Container Image on Quay](https://img.shields.io/badge/UBI8%20Container%20Image-Quay.io-orange?style=for-the-badge)](https://quay.io/kenmoini/gogs-ubi)
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/kenmoini/gogs-openshift-docker/Build%20and%20Push%20and%20Release?label=Container%20Build&style=for-the-badge)
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/kenmoini/gogs-openshift-docker?style=for-the-badge)
 
 Gogs is the Go Git service. Learn more about it at https://gogs.io/

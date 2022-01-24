@@ -1,0 +1,117 @@
+###############################################################
+## Source Builder Container
+FROM quay.io/polyglotsystems/golang-ubi:latest AS builder
+
+ARG GOGS_VERSION="v0.12.4"
+
+## Update base packages and install needed packages
+RUN dnf update --setopt=tsflags=nodocs --disablerepo=rhel-8-for-x86_64-appstream-beta-rpms --disablerepo=rhel-8-for-x86_64-baseos-beta-rpms -y \
+  && dnf install --setopt=tsflags=nodocs --disablerepo=rhel-8-for-x86_64-appstream-beta-rpms --disablerepo=rhel-8-for-x86_64-baseos-beta-rpms gcc gcc-c++ libgcc -y
+
+## Build gogs from source and a specific version
+RUN mkdir -p /gogs.io \
+  && cd /gogs.io \
+  && git clone https://github.com/gogs/gogs.git \
+  && cd gogs \
+  && git checkout ${GOGS_VERSION} \
+  && make build TAGS=""
+
+###############################################################
+## Switch to runtime container
+FROM registry.access.redhat.com/ubi8/ubi-init:latest
+
+# Setup Default Args
+ENV GOGS_CUSTOM /data/gogs
+
+# Create file system bits
+RUN if [ `uname -m` == "aarch64" ] ; then \
+      export arch="arm64" ; \
+  elif [ `uname -m` == "armv7l" ] ; then \
+      export arch="armhf"; \
+  else \
+      export arch="amd64" ; \
+  fi \
+  && dnf install --setopt=tsflags=nodocs --disablerepo=rhel-8-for-x86_64-appstream-beta-rpms --disablerepo=rhel-8-for-x86_64-baseos-beta-rpms -y wget git openssh-server gcc gcc-c++ libgcc make systemd rsyslog nss_wrapper gettext \
+  && wget https://github.com/tianon/gosu/releases/download/1.11/gosu-$arch -O /usr/sbin/gosu \
+  && chmod +x /usr/sbin/gosu \
+  && dnf clean all \
+  && rm -rf /var/cache/yum \
+  && rm -rf /var/log/* \
+  && mkdir -p /app/gogs \
+  && mkdir -p /data/gogs \
+  && mkdir -p /var/log/gogs
+
+# Configure LibC Name Service
+COPY --from=builder /gogs.io/gogs/docker/nsswitch.conf /etc/nsswitch.conf
+
+## Create a Git user but call it "gogs"
+RUN groupadd --system --gid 1001 git \
+  && adduser --create-home --shell /bin/bash --gid 1001 --uid 1001 git \
+  && usermod -p '*' git \
+  && passwd -u git \
+  && mkdir /home/git/{.ssh,gogs-repositories} \
+  && mkdir -p /data/gogs/{conf,data,log} \
+  && mkdir -p /data/{git,ssh} \
+  && echo "export GOGS_CUSTOM=${GOGS_CUSTOM}" >> /etc/profile
+
+## Build skalibs
+RUN mkdir -p /tmp/{skalibs,s6,execline} \
+  && cd /tmp/skalibs \
+  && git clone https://github.com/skarnet/skalibs.git \
+  && cd skalibs \
+  && ./configure \
+  && make \
+  && make install
+
+## Build execline
+RUN cd /tmp/execline \
+  && git clone https://github.com/skarnet/execline.git \
+  && cd execline \
+  && ./configure \
+  && make \
+  && make install
+
+## Build S6
+RUN cd /tmp/s6 \
+  && git clone https://github.com/skarnet/s6.git \
+  && cd s6 \
+  && ./configure \
+  && make \
+  && make install \
+  && cd /home/git \
+  && rm -rf /tmp/{skalibs,s6,execline} \
+  && dnf remove -y gcc gcc-c++ make
+
+## Copy over application files
+WORKDIR /app/gogs
+COPY --from=builder --chown=git:git /gogs.io/gogs/docker ./docker
+COPY --from=builder --chown=git:git /gogs.io/gogs/gogs .
+
+## Copy over any root FS overrides
+COPY ./container-root/ /
+
+## Set permissions
+RUN chown -R git:git /home/git \
+  && chown -R git:git /data/gogs \
+  && chown -R git:git /app/gogs \
+  && chown -R git:git /var/log/gogs \
+  && chown -R git:git /data/git
+
+## Clean up
+RUN rm -rf /app/gogs/build \
+  && rm /app/gogs/docker/finalize.sh \
+  && rm /app/gogs/docker/nsswitch.conf \
+  && rm /app/gogs/docker/README.md
+
+## Swith to the git user
+#USER 1001
+
+ENV PUID 1001
+ENV PGID 1001
+ENV USER git
+
+VOLUME ["/data", "/backup"]
+EXPOSE 2222 3000
+HEALTHCHECK CMD (curl -o /dev/null -sS http://localhost:3000/healthcheck) || exit 1
+ENTRYPOINT ["/app/gogs/docker/start.sh"]
+CMD ["/bin/s6-svscan", "/app/gogs/docker/s6/"]
