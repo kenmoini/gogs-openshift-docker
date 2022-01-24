@@ -31,7 +31,7 @@ jobs:
         echo "SOURCE_NAME: ${{ steps.git_build_info.outputs.SOURCE_NAME }}"
         echo "SOURCE_BRANCH: ${{ steps.git_build_info.outputs.SOURCE_BRANCH }}"
         echo "SOURCE_TAG: ${{ steps.git_build_info.outputs.SOURCE_TAG }}"
-        echo ::set-output name=GOGS_VERSION::$(curl -sSL https://golang.org/VERSION?m=text | sed 's/go//g')
+        echo ::set-output name=GOGS_VERSION::$(curl -sSL https://api.github.com/repos/gogs/gogs/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/v//g')
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v1
