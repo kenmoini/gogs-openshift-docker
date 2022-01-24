@@ -33,6 +33,15 @@ jobs:
         echo "SOURCE_TAG: ${{ steps.git_build_info.outputs.SOURCE_TAG }}"
         echo ::set-output name=GOGS_VERSION::$(curl -sSL https://api.github.com/repos/gogs/gogs/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 
+    - name: Get the latest version of Gogs
+      id: tagged_version
+      run: |
+        SOURCE_NAME=${{ steps.git_build_info.outputs.SOURCE_NAME }}
+        IS_TAGGED_VERSION="false"
+        if [ ${SOURCE_NAME:0:1} = "v" ]; then IS_TAGGED_VERSION="true"; fi
+        echo "IS_TAGGED_VERSION: ${IS_TAGGED_VERSION}"
+        echo ::set-output name=IS_TAGGED_VERSION::$IS_TAGGED_VERSION
+
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v1
 
@@ -99,6 +108,7 @@ jobs:
           GOGS_VERSION=${{ steps.gogs_version.outputs.GOGS_VERSION }}
 
     - name: Create a new Release with the newly built container
+      if: "contains(steps.tagged_version.outputs.IS_TAGGED_VERSION, 'true')"
       uses: ncipollo/release-action@v1
       with:
         token: ${{ secrets.GHUB_TOKEN }}
