@@ -1,17 +1,77 @@
 kind: Template
-apiVersion: v1
+apiVersion: template.openshift.io/v1
 metadata:
   annotations:
     description: The Gogs git server (https://gogs.io/)
     tags: instant-app,gogs,go,golang
   name: gogs
+  namespace: openshift
 objects:
 - kind: ServiceAccount
   apiVersion: v1
   metadata:
     labels:
       app: ${APPLICATION_NAME}
-    name: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}-sa
+
+- kind: SecurityContextConstraints
+  apiVersion: v1
+  metadata:
+    name: ${APPLICATION_NAME}-scc
+  allowHostDirVolumePlugin: false
+  allowHostIPC: false
+  allowHostNetwork: false
+  allowHostPID: false
+  allowHostPorts: false
+  allowPrivilegeEscalation: true
+  allowPrivilegedContainer: false
+  allowedCapabilities: null
+  runAsUser:
+    type: MustRunAsRange
+    uidRangeMin: 1000
+    uidRangeMax: 9999
+  seLinuxContext:
+    type: RunAsAny
+  fsGroup:
+    type: MustRunAs
+    ranges:
+    - min: 1000
+      max: 9999
+  supplementalGroups:
+    type: MustRunAs
+    ranges:
+    - min: 1000
+      max: 9999
+- kind: Role
+  apiVersion: rbac.authorization.k8s.io/v1
+  metadata:
+    name: ${APPLICATION_NAME}-use-scc-role
+  rules:
+    - apiGroups: ["security.openshift.io"]
+      resources: ["securitycontextconstraints"]
+      resourceNames: ["${APPLICATION_NAME}-scc"]
+      verbs: ["use"]
+    - apiGroups: ["security.openshift.io"]
+      resources: ["securitycontextconstraints"]
+      resourceNames: ["anyuid"]
+      verbs: ["use"]
+    - apiGroups: ["security.openshift.io"]
+      resources: ["securitycontextconstraints"]
+      resourceNames: ["privileged"]
+      verbs: ["use"]
+
+- kind: RoleBinding
+  apiVersion: rbac.authorization.k8s.io/v1
+  metadata:
+    name: ${APPLICATION_NAME}-use-scc-rb
+  subjects:
+    - kind: ServiceAccount
+      name: ${APPLICATION_NAME}-sa
+  roleRef:
+    kind: Role
+    name: ${APPLICATION_NAME}-use-scc-role
+    apiGroup: rbac.authorization.k8s.io
+
 - kind: Service
   apiVersion: v1
   metadata:
@@ -25,6 +85,7 @@ objects:
       targetPort: 5432
     selector:
       name: ${APPLICATION_NAME}-postgresql
+
 - kind: DeploymentConfig
   apiVersion: v1
   metadata:
@@ -33,6 +94,7 @@ objects:
     name: ${APPLICATION_NAME}-postgresql
     labels:
       app: ${APPLICATION_NAME}
+      app.kubernetes.io/part-of: gogs
   spec:
     replicas: 1
     selector:
@@ -45,7 +107,7 @@ objects:
           name: ${APPLICATION_NAME}-postgresql
         name: ${APPLICATION_NAME}-postgresql
       spec:
-        serviceAccountName: ${APPLICATION_NAME}
+        serviceAccountName: ${APPLICATION_NAME}-sa
         containers:
         - env:
           - name: POSTGRESQL_USER
@@ -98,6 +160,7 @@ objects:
           namespace: openshift
       type: ImageChange
     - type: ConfigChange
+
 - kind: Service
   apiVersion: v1
   metadata:
@@ -113,15 +176,16 @@ objects:
       port: 3000
       protocol: TCP
       targetPort: 3000
-    - name: 10022-tcp
-      port: 10022
+    - name: 2222-tcp
+      port: 2222
       protocol: TCP
-      targetPort: 10022
+      targetPort: 2222
     selector:
       app: ${APPLICATION_NAME}
       deploymentconfig: ${APPLICATION_NAME}
     sessionAffinity: None
     type: ClusterIP
+
 - kind: Route
   apiVersion: v1
   id: ${APPLICATION_NAME}-http
@@ -137,6 +201,7 @@ objects:
       targetPort: 3000-tcp
     to:
       name: ${APPLICATION_NAME}
+
 - kind: Route
   apiVersion: v1
   id: ${APPLICATION_NAME}-ssh
@@ -147,16 +212,18 @@ objects:
       app: ${APPLICATION_NAME}
     name: ${APPLICATION_NAME}-ssh
   spec:
-    host: secure${HOSTNAME}
+    host: ssh-${HOSTNAME}
     port:
-      targetPort: 10022-tcp
+      targetPort: 2222-tcp
     to:
       name: ${APPLICATION_NAME}
+
 - kind: DeploymentConfig
   apiVersion: v1
   metadata:
     labels:
       app: ${APPLICATION_NAME}
+      app.kubernetes.io/part-of: gogs
     name: ${APPLICATION_NAME}
   spec:
     replicas: 1
@@ -179,7 +246,11 @@ objects:
           app: ${APPLICATION_NAME}
           deploymentconfig: ${APPLICATION_NAME}
       spec:
-        serviceAccountName: ${APPLICATION_NAME}
+        serviceAccountName: ${APPLICATION_NAME}-sa
+        securityContext:
+          runAsUser: 1001
+          runAsGroup: 1001
+          fsGroup: 1001
         containers:
         - image: " "
           imagePullPolicy: Always
@@ -187,7 +258,7 @@ objects:
           ports:
           - containerPort: 3000
             protocol: TCP
-          - containerPort: 10022
+          - containerPort: 2222
             protocol: TCP
           resources: {}
           terminationMessagePath: /dev/termination-log
@@ -218,7 +289,6 @@ objects:
               failureThreshold: 3
         dnsPolicy: ClusterFirst
         restartPolicy: Always
-        securityContext: {}
         terminationGracePeriodSeconds: 30
         volumes:
         - name: gogs-data
@@ -240,6 +310,7 @@ objects:
           kind: ImageStreamTag
           name: ${APPLICATION_NAME}:${GOGS_VERSION}
       type: ImageChange
+
 - kind: ImageStream
   apiVersion: v1
   metadata:
@@ -251,12 +322,13 @@ objects:
     - name: "${GOGS_VERSION}"
       from:
         kind: DockerImage
-        name: quay.io/takinosh/gogs:${GOGS_VERSION}
+        name: quay.io/kenmoini/gogs-ubi:${GOGS_VERSION}
       importPolicy: {}
       annotations:
         description: The Gogs git server docker image
         tags: gogs,go,golang
         version: "${GOGS_VERSION}"
+
 - kind: ConfigMap
   apiVersion: v1
   metadata:
@@ -265,8 +337,82 @@ objects:
       app: ${APPLICATION_NAME}
   data:
     app.ini: |
+      APP_NAME = Gogs
+      RUN_USER = git
       RUN_MODE = prod
-      RUN_USER = gogs
+
+      [repository]
+      ROOT                      = /home/git/gogs-repositories
+      SCRIPT_TYPE               = bash
+      ANSI_CHARSET              =
+      FORCE_PRIVATE             = false
+      MAX_CREATION_LIMIT        = -1
+      MIRROR_QUEUE_LENGTH       = 1000
+      PULL_REQUEST_QUEUE_LENGTH = 1000
+      PREFERRED_LICENSES        = Apache License 2.0,MIT License
+
+      [repository.editor]
+      LINE_WRAP_EXTENSIONS   = .txt,.md,.markdown,.mdown,.mkd,
+      PREVIEWABLE_FILE_MODES = markdown
+
+      [repository.upload]
+      ENABLED       = true
+      TEMP_PATH     = data/tmp/uploads
+      ALLOWED_TYPES =
+      FILE_MAX_SIZE = 3
+      MAX_FILES     = 5
+
+      [ui]
+      EXPLORE_PAGING_NUM    = 20
+      ISSUE_PAGING_NUM      = 10
+      FEED_MAX_COMMIT_NUM   = 5
+      THEME_COLOR_META_TAG  = `#ff5343`
+      MAX_DISPLAY_FILE_SIZE = 8388608
+
+      [ui.admin]
+      USER_PAGING_NUM   = 50
+      REPO_PAGING_NUM   = 50
+      NOTICE_PAGING_NUM = 25
+      ORG_PAGING_NUM    = 50
+
+      [ui.user]
+      REPO_PAGING_NUM = 15
+
+      [markdown]
+      ENABLE_HARD_LINE_BREAK = false
+      CUSTOM_URL_SCHEMES     =
+      FILE_EXTENSIONS        = .md,.markdown,.mdown,.mkd
+
+      [server]
+      PROTOCOL               = http
+      DOMAIN                 = ${HOSTNAME}
+      ROOT_URL               = http://${HOSTNAME}
+      HTTP_ADDR              = 0.0.0.0
+      HTTP_PORT              = 3000
+      UNIX_SOCKET_PERMISSION = 666
+      LOCAL_ROOT_URL         = %(PROTOCOL)s://%(HTTP_ADDR)s:%(HTTP_PORT)s/
+      DISABLE_SSH            = false
+      START_SSH_SERVER       = false
+      SSH_DOMAIN             = ssh-${HOSTNAME}
+      SSH_DOMAIN             = %(DOMAIN)s
+      SSH_PORT               = 2222
+      SSH_LISTEN_PORT        = %(SSH_PORT)s
+      SSH_ROOT_PATH          =
+      SSH_KEY_TEST_PATH      =
+      SSH_KEYGEN_PATH        = ssh-keygen
+      MINIMUM_KEY_SIZE_CHECK = false
+      OFFLINE_MODE           = false
+      DISABLE_ROUTER_LOG     = false
+      STATIC_ROOT_PATH       =
+      APP_DATA_PATH          = data
+      ENABLE_GZIP            = false
+      LANDING_PAGE           = home
+
+      [ssh.minimum_key_sizes]
+      ED25519 = 256
+      ECDSA   = 256
+      RSA     = 2048
+      DSA     = 1024
 
       [database]
       DB_TYPE  = postgres
@@ -274,24 +420,186 @@ objects:
       NAME     = ${DATABASE_NAME}
       USER     = ${DATABASE_USER}
       PASSWD   = ${DATABASE_PASSWORD}
+      SSL_MODE = disable
+      PATH     = data/gogs.db
 
-      [repository]
-      ROOT = /opt/gogs/data/repositories
-
-      [server]
-      ROOT_URL=http://${HOSTNAME}
-      SSH_DOMAIN=secure${HOSTNAME}
-      START_SSH_SERVER=true
-      SSH_LISTEN_PORT=10022
+      [admin]
 
       [security]
-      INSTALL_LOCK = ${INSTALL_LOCK}
+      INSTALL_LOCK                      = ${INSTALL_LOCK}
+      SECRET_KEY                        = ${GOGS_SECRET_KEY}
+      LOGIN_REMEMBER_DAYS               = 7
+      COOKIE_USERNAME                   = gogs_awesome
+      COOKIE_REMEMBER_NAME              = gogs_incredible
+      REVERSE_PROXY_AUTHENTICATION_USER = X-WEBAUTH-USER
 
       [service]
-      ENABLE_CAPTCHA = false
+      ACTIVE_CODE_LIVE_MINUTES               = 180
+      RESET_PASSWD_CODE_LIVE_MINUTES         = 180
+      REGISTER_EMAIL_CONFIRM                 = false
+      DISABLE_REGISTRATION                   = false
+      REQUIRE_SIGNIN_VIEW                    = false
+      ENABLE_NOTIFY_MAIL                     = false
+      ENABLE_REVERSE_PROXY_AUTHENTICATION    = false
+      ENABLE_REVERSE_PROXY_AUTO_REGISTRATION = false
+      ENABLE_CAPTCHA                         = false
 
       [webhook]
+      QUEUE_LENGTH    = 1000
+      DELIVER_TIMEOUT = 5
+      PAGING_NUM      = 10
       SKIP_TLS_VERIFY = ${SKIP_TLS_VERIFY}
+
+      [mailer]
+      ENABLED                 = false
+      SEND_BUFFER_LEN         = 100
+      SUBJECT                 = %(APP_NAME)s
+      HOST                    =
+      DISABLE_HELO            =
+      HELO_HOSTNAME           =
+      SKIP_VERIFY             =
+      USE_CERTIFICATE         = false
+      CERT_FILE               = custom/mailer/cert.pem
+      KEY_FILE                = custom/mailer/key.pem
+      FROM                    =
+      USER                    =
+      PASSWD                  =
+      ENABLE_HTML_ALTERNATIVE = false
+
+      [cache]
+      ADAPTER  = memory
+      INTERVAL = 60
+      HOST     =
+
+      [session]
+      PROVIDER          = file
+      PROVIDER_CONFIG   = data/sessions
+      COOKIE_NAME       = i_like_gogits
+      COOKIE_SECURE     = false
+      ENABLE_SET_COOKIE = true
+      GC_INTERVAL_TIME  = 86400
+      SESSION_LIFE_TIME = 86400
+
+      [picture]
+      AVATAR_UPLOAD_PATH      = data/avatars
+      GRAVATAR_SOURCE         = gravatar
+      DISABLE_GRAVATAR        = false
+      ENABLE_FEDERATED_AVATAR = false
+
+      [attachment]
+      ENABLE        = true
+      PATH          = data/attachments
+      ALLOWED_TYPES = image/jpeg|image/png
+      MAX_SIZE      = 4
+      MAX_FILES     = 5
+
+      [time]
+      FORMAT =
+
+      [log]
+      ROOT_PATH  = /var/log/gogs
+      MODE       = console, file
+      BUFFER_LEN = 10000
+      LEVEL      = Info
+
+      [log.console]
+      LEVEL =
+
+      [log.file]
+      LEVEL          =
+      LOG_ROTATE     = true
+      MAX_LINES      = 1000000
+      MAX_SIZE_SHIFT = 28
+      DAILY_ROTATE   = true
+      MAX_DAYS       = 7
+
+      [log.conn]
+      LEVEL            =
+      RECONNECT_ON_MSG = false
+      RECONNECT        = false
+      PROTOCOL         = tcp
+      ADDR             =
+
+      [log.smtp]
+      LEVEL     =
+      SUBJECT   = Diagnostic message from server
+      HOST      =
+      USER      =
+      PASSWD    =
+      RECEIVERS =
+
+      [log.database]
+      LEVEL  =
+      DRIVER =
+      CONN   =
+
+      [cron]
+      ENABLED      = true
+      RUN_AT_START = false
+
+      [cron.update_mirrors]
+      SCHEDULE = @every 10m
+
+      [cron.repo_health_check]
+      SCHEDULE = @every 24h
+      TIMEOUT  = 60s
+      ARGS     =
+
+      [cron.check_repo_stats]
+      RUN_AT_START = true
+      SCHEDULE     = @every 24h
+
+      [git]
+      DISABLE_DIFF_HIGHLIGHT       = false
+      MAX_GIT_DIFF_LINES           = 1000
+      MAX_GIT_DIFF_LINE_CHARACTERS = 500
+      MAX_GIT_DIFF_FILES           = 100
+      GC_ARGS                      =
+
+      [git.timeout]
+      MIGRATE = 600
+      MIRROR  = 300
+      CLONE   = 300
+      PULL    = 300
+      GC      = 60
+
+      [mirror]
+      DEFAULT_INTERVAL = 8
+
+      [api]
+      MAX_RESPONSE_ITEMS = 50
+
+      [i18n]
+      LANGS = en-US,zh-CN,zh-HK,zh-TW,de-DE,fr-FR,nl-NL,lv-LV,ru-RU,ja-JP,es-ES,pt-BR,pl-PL,bg-BG,it-IT,fi-FI,tr-TR,cs-CZ
+      NAMES = English,简体中文,繁體中文（香港）,繁體中文（台湾）,Deutsch,Français,Nederlands,Latviešu,Русский,日本語,Español,Português do Brasil,Polski,български,Italiano,Suomalainen,Türkçe,čeština
+
+      [i18n.datelang]
+      en-US = en
+      zh-CN = zh
+      zh-HK = zh-TW
+      zh-TW = zh-TW
+      de-DE = de
+      fr-FR = fr
+      nl-NL = nl
+      lv-LV = lv
+      ru-RU = ru
+      ja-JP = ja
+      es-ES = es
+      pt-BR = pt-BR
+      pl-PL = pl
+      bg-BG = bg
+      it-IT = it
+      fi-FI = fi
+      tr-TR = tr
+      cs-CZ = cs-CZ
+
+      [highlight.mapping]
+
+      [other]
+      SHOW_FOOTER_BRANDING           = false
+      SHOW_FOOTER_VERSION            = true
+      SHOW_FOOTER_TEMPLATE_LOAD_TIME = true
+
 parameters:
 - description: The name for the application.
   name: APPLICATION_NAME
@@ -324,10 +632,14 @@ parameters:
 - displayName: Database version (PostgreSQL)
   name: DATABASE_VERSION
   value: "10"
+- displayName: Gogs Secret Key
+  from: '[a-zA-Z0-9]{15}'
+  generate: expression
+  name: GOGS_SECRET_KEY
 - name: GOGS_VERSION
   displayName: Gogs Version
-  description: 'Version of the Gogs container image to be used (check the available version https://quay.io/repository/takinosh/gogs?tab=tags)'
-  value: "0.11.91"
+  description: 'Version of the Gogs container image to be used (check the available version https://quay.io/repository/kenmoini/gogs-ubi?tab=tags)'
+  value: "v0.12.4"
   required: true
 - name: INSTALL_LOCK
   displayName: Installation lock
@@ -336,4 +648,4 @@ parameters:
 - name: SKIP_TLS_VERIFY
   displayName: Skip TLS verification on webhooks
   description: Skip TLS verification on webhooks. Enable with caution!
-  value: "false"
+  value: "true"

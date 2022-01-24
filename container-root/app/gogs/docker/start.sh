@@ -1,5 +1,10 @@
 #!/bin/sh
 
+echo "whoami: $(whoami)"
+echo "user: $(id -u -n)"
+echo "group: $(id -g -n)"
+echo "path: $(pwd)"
+
 create_socat_links() {
     # Bind linked docker container to localhost socket using socat
     GOGS_WEB_PORT=${GOGS_WEB_PORT:-3000}
