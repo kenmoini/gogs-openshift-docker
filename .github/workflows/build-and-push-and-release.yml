@@ -50,7 +50,7 @@ jobs:
 
     #- name: Docker meta
     #  id: meta
-    #  uses: docker/metadata-action@v3
+    #  uses: docker/metadata-action@v4
     #  with:
     #    # list of Docker images to use as base name for tags
     #    images: "${{ secrets.REGISTRY_REPO }}"
@@ -64,7 +64,7 @@ jobs:
 
     - name: UBI Docker meta
       id: ubimeta
-      uses: docker/metadata-action@v3
+      uses: docker/metadata-action@v4
       with:
         # list of Docker images to use as base name for tags
         images: quay.io/kenmoini/gogs-ubi
