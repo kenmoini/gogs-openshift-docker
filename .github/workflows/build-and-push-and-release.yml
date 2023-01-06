@@ -16,7 +16,7 @@ jobs:
     steps:
 
     - name: Check out code
-      uses: actions/checkout@v2.4.0
+      uses: actions/checkout@v3.3.0
 
     - name: Git Build Info
       id: git_build_info
