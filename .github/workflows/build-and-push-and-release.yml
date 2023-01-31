@@ -86,7 +86,7 @@ jobs:
         password: "${{ secrets.REGISTRY_PASS }}"
 
     #- name: Build and push
-    #  uses: docker/build-push-action@v2
+    #  uses: docker/build-push-action@v4
     #  with:
     #    context: .
     #    push: true
@@ -97,7 +97,7 @@ jobs:
     #      GOGS_VERSION=${{ steps.gogs_version.outputs.GOGS_VERSION }}
 
     - name: Build and push UBI
-      uses: docker/build-push-action@v2
+      uses: docker/build-push-action@v4
       with:
         context: .
         push: true
